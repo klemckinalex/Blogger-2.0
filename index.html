@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+<script>
+let chicken;
+let obstacles = [];
+let clouds = [];
+let ground = [];
+let particles = [];
+let score = 0;
+let gameState = 'menu';
+let bgTime = 0;
+let bgPhase = 0;
+let highScore = 0;
+let pixelSize = 4;
+
+function setup() {
+    createCanvas(800, 400);
+    noSmooth();
+    chicken = new Chicken();
+    
+    // Initialize ground tiles
+    for (let i = 0; i < width / 40 + 2; i++) {
+        ground.push({
+            x: i * 40,
+            type: random(['grass', 'dirt', 'flower'])
+        });
+    }
+    
+    // Initialize clouds
+    for (let i = 0; i < 5; i++) {
+        clouds.push({
+            x: random(width),
+            y: random(50, 150),
+            size: random(30, 60),
+            speed: random(0.5, 1.5)
+        });
+    }
+}
+
+function draw() {
+    // Dynamic sky gradient
+    drawSky();
+    
+    // Draw clouds
+    drawClouds();
+    
+    // Draw ground
+    drawGround();
+    
+    if (gameState === 'menu') {
+        drawMenu();
+    } else if (gameState === 'playing') {
+        // Update and draw game elements
+        updateGame();
+        
+        // Draw obstacles
+        obstacles.forEach(obs => obs.draw());
+        
+        // Draw particles
+        updateParticles();
+        
+        // Draw chicken
+        chicken.update();
+        chicken.draw();
+        
+        // Draw UI
+        drawUI();
+    } else if (gameState === 'gameover') {
+        drawGameOver();
+    }
+}
+
+function drawSky() {
+    bgTime += 0.005;
+    
+    // Cycle through different times of day
+    let r, g, b;
+    let phase = (sin(bgTime) + 1) / 2;
+    
+    if (phase < 0.25) { // Dawn
+        r = lerp(20, 255, phase * 4);
+        g = lerp(24, 150, phase * 4);
+        b = lerp(82, 100, phase * 4);
+    } else if (phase < 0.5) { // Day
+        r = lerp(255, 135, (phase - 0.25) * 4);
+        g = lerp(150, 206, (phase - 0.25) * 4);
+        b = lerp(100, 235, (phase - 0.25) * 4);
+    } else if (phase < 0.75) { // Sunset
+        r = lerp(135, 255, (phase - 0.5) * 4);
+        g = lerp(206, 94, (phase - 0.5) * 4);
+        b = lerp(235, 77, (phase - 0.5) * 4);
+    } else { // Night
+        r = lerp(255, 20, (phase - 0.75) * 4);
+        g = lerp(94, 24, (phase - 0.75) * 4);
+        b = lerp(77, 82, (phase - 0.75) * 4);
+    }
+    
+    // Sky gradient
+    for (let i = 0; i <= height * 0.7; i++) {
+        let inter = map(i, 0, height * 0.7, 0, 1);
+        let c = color(
+            r * (1 - inter * 0.3),
+            g * (1 - inter * 0.2),
+            b * (1 - inter * 0.1)
+        );
+        stroke(c);
+        line(0, i, width, i);
+    }
+}
+
+function drawClouds() {
+    fill(255, 255, 255, 180);
+    noStroke();
+    
+    clouds.forEach(cloud => {
+        push();
+        translate(cloud.x, cloud.y);
+        
+        // Pixelated cloud shape
+        for (let i = 0; i < cloud.size; i += pixelSize) {
+            for (let j = 0; j < cloud.size * 0.6; j += pixelSize) {
+                if (dist(i, j, cloud.size/2, cloud.size*0.3) < cloud.size/2) {
+                    rect(i - cloud.size/2, j - cloud.size*0.3, pixelSize, pixelSize);
+                }
+            }
+        }
+        pop();
+        
+        // Move clouds
+        cloud.x -= cloud.speed;
+        if (cloud.x < -cloud.size) {
+            cloud.x = width + cloud.size;
+            cloud.y = random(50, 150);
+        }
+    });
+}
+
+function drawGround() {
+    // Ground
+    fill(101, 67, 33);
+    rect(0, height * 0.7, width, height * 0.3);
+    
+    // Ground tiles with variety
+    ground.forEach(tile => {
+        push();
+        translate(tile.x, height * 0.7);
+        
+        if (tile.type === 'grass') {
+            // Grass patches
+            fill(34, 139, 34);
+            for (let i = 0; i < 40; i += pixelSize * 2) {
+                let h = random(4, 12);
+                rect(i, -h, pixelSize, h);
+            }
+        } else if (tile.type === 'flower') {
+            // Flowers
+            fill(255, 192, 203);
+            rect(20, -8, pixelSize * 2, pixelSize * 2);
+            fill(255, 255, 0);
+            rect(20 + pixelSize/2, -8 + pixelSize/2, pixelSize, pixelSize);
+            fill(34, 139, 34);
+            rect(20 + pixelSize/2, -4, pixelSize, 4);
+        }
+        
+        pop();
+        
+        // Move ground tiles
+        tile.x -= 5;
+        if (tile.x < -40) {
+            tile.x = width;
+            tile.type = random(['grass', 'dirt', 'flower']);
+        }
+    });
+}
+
+function drawMenu() {
+    // Title
+    push();
+    textAlign(CENTER);
+    fill(255);
+    textSize(48);
+    text('CHICKEN RUN', width/2, height/3);
+    
+    textSize(24);
+    text('Press SPACE to start', width/2, height/2);
+    
+    textSize(16);
+    text('Controls:', width/2, height * 0.65);
+    text('SPACE - Jump', width/2, height * 0.72);
+    text('Hold SPACE - Jump higher', width/2, height * 0.79);
+    
+    if (highScore > 0) {
+        textSize(20);
+        fill(255, 215, 0);
+        text('High Score: ' + highScore, width/2, height * 0.9);
+    }
+    pop();
+}
+
+function drawGameOver() {
+    push();
+    textAlign(CENTER);
+    fill(255);
+    textSize(48);
+    text('GAME OVER', width/2, height/3);
+    
+    textSize(32);
+    text('Score: ' + floor(score), width/2, height/2);
+    
+    if (score > highScore) {
+        fill(255, 215, 0);
+        textSize(24);
+        text('NEW HIGH SCORE!', width/2, height * 0.6);
+    }
+    
+    fill(255);
+    textSize(20);
+    text('Press SPACE to play again', width/2, height * 0.75);
+    pop();
+}
+
+function drawUI() {
+    // Score
+    push();
+    fill(255);
+    textSize(24);
+    text('Score: ' + floor(score), 20, 40);
+    
+    if (highScore > 0) {
+        textSize(16);
+        fill(255, 215, 0);
+        text('High: ' + highScore, 20, 65);
+    }
+    pop();
+}
+
+function updateGame() {
+    score += 0.1;
+    
+    // Spawn obstacles
+    if (frameCount % 60 === 0) {
+        let obstacleType = random(['cactus', 'rock', 'fence']);
+        obstacles.push(new Obstacle(obstacleType));
+    }
+    
+    // Update obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        obstacles[i].update();
+        
+        // Check collision
+        if (chicken.hits(obstacles[i])) {
+            gameOver();
+        }
+        
+        // Remove off-screen obstacles
+        if (obstacles[i].x < -50) {
+            obstacles.splice(i, 1);
+        }
+    }
+}
+
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.2;
+        p.life -= 2;
+        
+        push();
+        fill(p.color.levels[0], p.color.levels[1], p.color.levels[2], p.life);
+        noStroke();
+        rect(p.x, p.y, pixelSize, pixelSize);
+        pop();
+        
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+class Chicken {
+    constructor() {
+        this.x = 100;
+        this.y = height * 0.7 - 40;
+        this.w = 32;
+        this.h = 32;
+        this.vy = 0;
+        this.jumping = false;
+        this.jumpPower = 0;
+        this.frame = 0;
+    }
+    
+    update() {
+        // Gravity
+        this.vy += 0.8;
+        this.y += this.vy;
+        
+        // Ground collision
+        if (this.y > height * 0.7 - this.h) {
+            this.y = height * 0.7 - this.h;
+            this.vy = 0;
+            this.jumping = false;
+            
+            // Landing particles
+            for (let i = 0; i < 5; i++) {
+                particles.push({
+                    x: this.x + this.w/2 + random(-10, 10),
+                    y: this.y + this.h,
+                    vx: random(-2, 2),
+                    vy: random(-2, 0),
+                    color: color(101, 67, 33),
+                    life: 255
+                });
+            }
+        }
+        
+        // Animation
+        if (!this.jumping && frameCount % 5 === 0) {
+            this.frame = (this.frame + 1) % 2;
+        }
+    }
+    
+    jump() {
+        if (!this.jumping) {
+            this.jumping = true;
+            this.jumpPower = -12;
+            this.vy = this.jumpPower;
+        } else if (this.jumpPower < -8) {
+            // Allow higher jumps by holding
+            this.jumpPower += 0.5;
+            this.vy = this.jumpPower;
+        }
+    }
+    
+    draw() {
+        push();
+        translate(this.x, this.y);
+        
+        // Pixelated chicken
+        noStroke();
+        
+        // Body
+        fill(255, 255, 255);
+        rect(4, 8, 24, 20);
+        
+        // Head
+        rect(20, 4, 12, 12);
+        
+        // Beak
+        fill(255, 165, 0);
+        rect(32, 8, 4, 4);
+        
+        // Eye
+        fill(0);
+        rect(24, 8, 4, 4);
+        
+        // Comb
+        fill(255, 0, 0);
+        rect(20, 0, 8, 4);
+        rect(24, 4, 4, 4);
+        
+        // Wing
+        fill(240, 240, 240);
+        rect(8, 12, 12, 8);
+        
+        // Legs (animated)
+        fill(255, 165, 0);
+        if (this.jumping) {
+            rect(8, 28, 4, 8);
+            rect(16, 28, 4, 8);
+        } else if (this.frame === 0) {
+            rect(8, 28, 4, 8);
+            rect(16, 28, 4, 4);
+        } else {
+            rect(8, 28, 4, 4);
+            rect(16, 28, 4, 8);
+        }
+        
+        // Tail
+        fill(255, 255, 255);
+        rect(0, 12, 4, 8);
+        
+        pop();
+    }
+    
+    hits(obstacle) {
+        return (this.x < obstacle.x + obstacle.w &&
+                this.x + this.w > obstacle.x &&
+                this.y < obstacle.y + obstacle.h &&
+                this.y + this.h > obstacle.y);
+    }
+}
+
+class Obstacle {
+    constructor(type) {
+        this.x = width;
+        this.y = height * 0.7;
+        this.type = type;
+        this.speed = 5;
+        
+        if (type === 'cactus') {
+            this.w = 24;
+            this.h = 40;
+            this.y -= this.h;
+        } else if (type === 'rock') {
+            this.w = 32;
+            this.h = 24;
+            this.y -= this.h;
+        } else if (type === 'fence') {
+            this.w = 40;
+            this.h = 32;
+            this.y -= this.h;
+        }
+    }
+    
+    update() {
+        this.x -= this.speed;
+    }
+    
+    draw() {
+        push();
+        noStroke();
+        
+        if (this.type === 'cactus') {
+            // Cactus
+            fill(34, 139, 34);
+            rect(this.x + 8, this.y, 8, 40);
+            rect(this.x, this.y + 8, 24, 8);
+            rect(this.x + 4, this.y + 24, 4, 8);
+            rect(this.x + 16, this.y + 24, 4, 8);
+            
+            // Spikes
+            fill(0, 100, 0);
+            for (let i = 0; i < 5; i++) {
+                rect(this.x + 10, this.y + i * 8, 4, 2);
+            }
+        } else if (this.type === 'rock') {
+            // Rock
+            fill(128, 128, 128);
+            rect(this.x + 4, this.y + 16, 24, 8);
+            rect(this.x, this.y + 8, 32, 8);
+            rect(this.x + 8, this.y, 16, 8);
+            
+            // Shading
+            fill(105, 105, 105);
+            rect(this.x + 16, this.y + 4, 8, 4);
+            rect(this.x + 20, this.y + 12, 8, 4);
+        } else if (this.type === 'fence') {
+            // Fence
+            fill(139, 69, 19);
+            rect(this.x, this.y + 16, 40, 8);
+            rect(this.x + 4, this.y, 4, 24);
+            rect(this.x + 16, this.y, 4, 24);
+            rect(this.x + 28, this.y, 4, 24);
+            rect(this.x + 36, this.y, 4, 24);
+        }
+        
+        pop();
+    }
+}
+
+function keyPressed() {
+    if (key === ' ') {
+        if (gameState === 'menu') {
+            startGame();
+        } else if (gameState === 'playing') {
+            chicken.jump();
+        } else if (gameState === 'gameover') {
+            startGame();
+        }
+    }
+}
+
+function keyReleased() {
+    if (key === ' ' && gameState === 'playing') {
+        chicken.jumpPower = 0;
+    }
+}
+
+function startGame() {
+    gameState = 'playing';
+    chicken = new Chicken();
+    obstacles = [];
+    particles = [];
+    score = 0;
+}
+
+function gameOver() {
+    gameState = 'gameover';
+    if (score > highScore) {
+        highScore = floor(score);
+    }
+}
+</script>
+</body>
+</html>
